@@ -52,9 +52,9 @@ class RateFinder(tf.Module):
         self,
         dataset_tensor: tf.Tensor,
         current_bit_position: tf.Tensor,
-        oxigen: tf.Tensor,
+        oxygen: tf.Tensor,
     ):
-        if oxigen:
+        if oxygen:
             flag = self._one
             frequencies, mask = most_frequent_bits(dataset_tensor)
         else:
@@ -85,13 +85,13 @@ class RateFinder(tf.Module):
         return gathered
 
     # @tf.function
-    def find(self, dataset_tensor: tf.Tensor, oxigen: tf.Tensor):
+    def find(self, dataset_tensor: tf.Tensor, oxygen: tf.Tensor):
         num_bits = tf.shape(dataset_tensor)[-1]
         self._ta.unstack(dataset_tensor)
         for current_bit_position in tf.range(num_bits):
             ta = self._ta.stack()
             gathered = tf.squeeze(
-                self.filter_by_bit_criteria(ta, current_bit_position, oxigen)
+                self.filter_by_bit_criteria(ta, current_bit_position, oxygen)
             )
             if tf.equal(tf.size(gathered), num_bits):
                 self._rating.assign(gathered)
@@ -133,10 +133,10 @@ def main():
     # in the "position".
     finder = RateFinder(bits=tf.size(epsilon_rate))
 
-    oxigen_generator_rating = finder.find(tensor_dataset, True)
-    tf.print("Oxigen generator rating (bin): ", oxigen_generator_rating)
-    oxigen_generator_rating_dec = bin2dec(oxigen_generator_rating)
-    tf.print("Oxigen generator rating (dec): ", oxigen_generator_rating_dec)
+    oxygen_generator_rating = finder.find(tensor_dataset, True)
+    tf.print("Oxigen generator rating (bin): ", oxygen_generator_rating)
+    oxygen_generator_rating_dec = bin2dec(oxygen_generator_rating)
+    tf.print("Oxigen generator rating (dec): ", oxygen_generator_rating_dec)
 
     co2_generator_rating = finder.find(tensor_dataset, False)
     tf.print("C02 scrubber rating (bin): ", co2_generator_rating)
@@ -144,7 +144,7 @@ def main():
     tf.print("C02 scrubber rating (dec): ", co2_generator_rating_dec)
 
     tf.print(
-        "life support rating = ", oxigen_generator_rating_dec * co2_generator_rating_dec
+        "life support rating = ", oxygen_generator_rating_dec * co2_generator_rating_dec
     )
 
 
