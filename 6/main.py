@@ -14,7 +14,7 @@ def evolve(initial_state: tf.Tensor, days: tf.Tensor):
     ta = tf.TensorArray(tf.int32, size=tf.size(initial_state), dynamic_size=True)
     ta = ta.unstack(initial_state)
 
-    for day in tf.range(1, days + 1):
+    for _ in tf.range(1, days + 1):
         yesterday_state = ta.stack()
         index_map = tf.equal(yesterday_state, 0)
         if tf.reduce_any(index_map):
@@ -49,64 +49,82 @@ def evolve(initial_state: tf.Tensor, days: tf.Tensor):
 # 2 -> 1 # there's one fish in status 2. Nothing happens to the lenght
 # k -> v # there's v fish in status k. Depends on on k.
 # If k = 0, it means there are v fish in status 0, hence the lenght (number of fish) will increment by v
-# on the next time step, while the v becomes 0 for k=0 and the number of fishes in status 8 increases by k.a
-@tf.function
-def count(initial_state: tf.Tensor, days: tf.Tensor):
-    hashmap = tf.lookup.experimental.MutableHashTable(
-        tf.int32, tf.int32, tf.constant(0, tf.int32)
-    )
-    keys, _, count = tf.unique_with_counts(initial_state, tf.int32)
-    hashmap.insert(keys, count)
+# on the next time step, while the v becomes 0 for k=0 and the number of fishes in status 8 increases by k.
 
-    def _count_elements():
-        return tf.reduce_sum(hashmap.lookup(tf.range(9)))
 
-    for day in tf.range(1, days + 1):
-        yesterday_state = hashmap.lookup(tf.range(9))
-        if tf.greater(yesterday_state[0], 0):
-            tf.print("shift from: ", yesterday_state, summarize=-1)
-            # handled values in keys [0, 5], [7, 8]
-            today_state = tf.tensor_scatter_nd_update(
-                yesterday_state,
-                tf.concat([tf.reshape(tf.range(6), (6, 1)), [[6], [7], [8]]], axis=0),
-                tf.concat(
+class TableCounter(tf.Module):
+    def __init__(self):
+        super().__init__()
+
+        self._zero = tf.constant(0, tf.int64)
+        self._one = tf.constant(1, tf.int64)
+        self._six = tf.constant(6, tf.int64)
+        self._eight = tf.constant(8, tf.int64)
+        self._nine = tf.constant(9, tf.int64)
+
+    @tf.function
+    def count(self, initial_state: tf.Tensor, days: tf.Tensor):
+        # BUG. There's ne key int32 with value int64 :<
+        # Must use both int64
+        # NOTE NOTE NOTE!!
+        # Like TensorArrays, the hashmap gives the error:
+        # Cannot infer argument `num` from shape <unknown>
+        # If declared in the init (self._hasmap) and then used
+        # The definition should be here mandatory for this to work.
+
+        hashmap = tf.lookup.experimental.MutableHashTable(
+            tf.int64, tf.int64, self._zero
+        )
+
+        keys, _, count = tf.unique_with_counts(initial_state, tf.int64)
+        hashmap.insert(keys, count)
+
+        for _ in tf.range(self._one, days + self._one):
+            # NOTE: This has no defined shape if the map is not defined in this method!!
+            yesterday_state = hashmap.lookup(tf.range(self._nine))
+            if tf.greater(yesterday_state[0], self._zero):
+                # handled values in keys [0, 5], [7, 8]
+                today_state = tf.tensor_scatter_nd_update(
+                    yesterday_state,
+                    tf.concat(
+                        [
+                            tf.reshape(tf.range(self._eight), (8, 1)),
+                            [[self._eight]],
+                        ],
+                        axis=0,
+                    ),
+                    tf.concat(
+                        [
+                            hashmap.lookup(tf.range(self._one, self._nine)),
+                            [yesterday_state[0]],
+                        ],
+                        axis=0,
+                    ),
+                )
+                # Add the number of zeros as additional number of six
+                today_state = tf.tensor_scatter_nd_add(
+                    today_state, [[self._six]], [yesterday_state[0]]
+                )
+            else:
+                # shift the the left all the map
+                # put a 0 in 8 position
+
+                updates = tf.concat(
                     [
-                        hashmap.lookup(tf.range(1, 7)),
-                        [yesterday_state[7]],
-                        [yesterday_state[8]],
-                        [yesterday_state[0]],
+                        tf.unstack(
+                            tf.gather(yesterday_state, tf.range(self._one, self._nine))
+                        ),
+                        [self._zero],
                     ],
                     axis=0,
-                ),
-            )
-            tf.print("to: ", today_state, summarize=-1)
-            today_state = tf.tensor_scatter_nd_add(
-                today_state, [[6]], [yesterday_state[0]]
-            )
-            tf.print(
-                "updated position 6 and 8 summing ",
-                yesterday_state[0],
-                "obtaining ",
-                summarize=-1,
-            )
-        else:
-            # shift the the left all the map
-            # put a 0 in 8 position
-            updates = tf.concat(
-                [
-                    tf.unstack(tf.gather(yesterday_state, tf.range(1, 9))),
-                    [tf.constant(0)],
-                ],
-                axis=0,
-            )
-            indices = tf.reshape(tf.range(9), (9, 1))
-            today_state = tf.tensor_scatter_nd_update(yesterday_state, indices, updates)
-            tf.print("complete shift, from ", yesterday_state)
+                )
+                indices = tf.reshape(tf.range(self._nine), (9, 1))
+                today_state = tf.tensor_scatter_nd_update(
+                    yesterday_state, indices, updates
+                )
 
-        tf.print("day ", day, " : ", today_state, summarize=-1)
-        hashmap.insert(tf.range(9), today_state)
-        tf.print(_count_elements())
-    return _count_elements()
+            hashmap.insert(tf.range(self._nine), today_state)
+        return tf.reduce_sum(hashmap.lookup(tf.range(self._nine)))
 
 
 def main():
@@ -114,19 +132,20 @@ def main():
 
     initial_state = next(
         iter(
-            tf.data.TextLineDataset("fake")
+            tf.data.TextLineDataset("input")
             .map(lambda string: tf.strings.split(string, ","))
-            .map(lambda numbers: tf.strings.to_number(numbers, out_type=tf.int32))
+            .map(lambda numbers: tf.strings.to_number(numbers, out_type=tf.int64))
             .take(1)
         )
     )
 
-    # days = tf.constant(80, tf.int32)
+    # days = tf.constant(80, tf.int64)
     # last_state = evolve(initial_state, days)
     # tf.print("# fish after ", days, " days: ", tf.size(last_state))
 
-    days = tf.constant(80, tf.int32)
-    count(initial_state, days)
+    days = tf.constant(256, tf.int64)
+    counter = TableCounter()
+    tf.print("# fish after ", days, " days: ", counter.count(initial_state, days))
 
 
 if __name__ == "__main__":
