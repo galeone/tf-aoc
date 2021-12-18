@@ -52,7 +52,18 @@ def main():
         if tf.less(cost, min_cost):
             min_cost = cost
             found_position = x
-    tf.print("min_cost: ", min_cost, " in position: ", found_position)
+    tf.print("(part one) min_cost: ", min_cost, " in position: ", found_position)
+
+    # -- Part 2 --
+    min_cost, found_position = tf.cast(-1, tf.uint64), -1
+    for x in tf.range(min_neigh_val, max_neigh_val):
+        diff = tf.abs(dataset_tensor - x)
+        lists = tf.ragged.range(tf.ones(tf.shape(diff)[0], dtype=tf.int64), diff + 1)
+        cost = tf.cast(tf.reduce_sum(lists), tf.uint64)
+        if tf.less(cost, min_cost):
+            min_cost = cost
+            found_position = x
+    tf.print("(part two) min_cost: ", min_cost, " in position: ", found_position)
 
 
 if __name__ == "__main__":
