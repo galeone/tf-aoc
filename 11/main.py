@@ -63,6 +63,50 @@ class FlashCounter(tf.Module):
         return neighborhood, coords
 
     @tf.function
+    def find_sync_step(self):
+        # use count as step
+        self._counter.assign(0)
+        while tf.logical_not(tf.reduce_all(tf.equal(self._population, self._zero))):
+            self._counter.assign_add(1)
+            # First, the energy level of each octopus increases by 1.
+            self._population.assign_add(tf.ones_like(self._population))
+
+            # Then, any octopus with an energy level greater than 9 flashes.
+            flashing_coords = tf.where(tf.greater(self._population, self._nine))
+            self._queue.enqueue_many(flashing_coords)
+
+            # This increases the energy level of all adjacent octopuses by 1, including octopuses that are diagonally adjacent.
+            # If this causes an octopus to have an energy level greater than 9, it also flashes.
+            # This process continues as long as new octopuses keep having their energy level increased beyond 9.
+            # (An octopus can only flash at most once per step.)
+            while tf.greater(self._queue.size(), 0):
+                p = self._queue.dequeue()
+                if tf.greater(self._flashmap[p[0], p[1]], 0):
+                    continue
+                self._flashmap.scatter_nd_update([p], [1])
+
+                _, neighs_coords = self._neighs(self._population, p)
+                updates = tf.repeat(
+                    self._one,
+                    tf.shape(neighs_coords, tf.int64)[0],
+                )
+                self._population.scatter_nd_add(neighs_coords, updates)
+                flashing_coords = tf.where(tf.greater(self._population, self._nine))
+                self._queue.enqueue_many(flashing_coords)
+
+            # Finally, any octopus that flashed during this step has its energy level set to 0, as it used all of its energy to flash.
+            indices = tf.where(tf.equal(self._flashmap, self._one))
+            if tf.greater(tf.size(indices), 0):
+                shape = tf.shape(indices, tf.int64)
+                updates = tf.repeat(self._zero, shape[0])
+                self._population.scatter_nd_update(indices, updates)
+
+            self._flashmap.assign(tf.zeros_like(self._flashmap))
+
+            tf.print(self._counter, self._population, summarize=-1)
+        return self._counter
+
+    @tf.function
     def __call__(self):
         for step in tf.range(self._steps):
             # First, the energy level of each octopus increases by 1.
@@ -110,7 +154,7 @@ def main():
 
     population = tf.convert_to_tensor(
         list(
-            tf.data.TextLineDataset("input")
+            tf.data.TextLineDataset("fake")
             .map(tf.strings.bytes_split)
             .map(lambda string: tf.strings.to_number(string, out_type=tf.int64))
         )
@@ -119,6 +163,15 @@ def main():
     steps = tf.constant(100, tf.int64)
     flash_counter = FlashCounter(population, steps)
     tf.print(flash_counter())
+
+    # -- Part 2 ---
+
+    # If you can calculate the exact moments when the octopuses will all flash
+    # simultaneously, you should be able to navigate through the cavern.
+    # What is the first step during which all octopuses flash?
+
+    # Re-use the status and avoid "steps" iterations
+    tf.print(steps + flash_counter.find_sync_step())
 
 
 if __name__ == "__main__":
