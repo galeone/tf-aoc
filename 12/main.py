@@ -43,14 +43,12 @@ def main():
 
     indices = indices.stack()
     indices = tf.reshape(indices, (-1, 2))
-    tf.print(indices, summarize=-1)
     A = tf.tensor_scatter_nd_update(
         tf.zeros((idx, idx), dtype=tf.int64),
         indices,
         tf.repeat(tf.cast(1, tf.int64), tf.shape(indices)[0]),
     )
     A = A + tf.transpose(A)
-    tf.print(A)
 
     # Visit only once (per path search)
     keys = human_to_id.export()[0]
@@ -76,9 +74,6 @@ def main():
     visit_multiple_times_human = tf.squeeze(visit_multiple_times_human)
     visit_multiple_times_id = human_to_id.lookup(visit_multiple_times_human)
 
-    tf.print(visit_only_once_id, visit_only_once_human)
-    tf.print(visit_multiple_times_id, visit_multiple_times_human)
-
     # Goal: go from start to end
     # Finding all the possible paths
     # I can use the adjiacency matrix for finding the neighbors of every node
@@ -97,72 +92,29 @@ def main():
     def _neigh_ids(A, node_id):
         return tf.squeeze(tf.where(tf.equal(A[node_id, :], 1)))
 
-    stack = []
-    # @tf.function
     def _visit(A: tf.Tensor, node_id: tf.Tensor, path: tf.Tensor):
-
         current_path = tf.concat([path, [node_id]], axis=0)
-        tf.print("current path: ", current_path)
         if tf.equal(node_id, end_id):
+            count.assign_add(1)
             return current_path
 
         neighs = _neigh_ids(A, node_id)
         neigh_shape = tf.shape(neighs)
         if tf.equal(tf.size(neighs), 0):
-            tf.print("(tf.size(neighs) == 0)")
             return current_path
 
         if tf.equal(tf.size(neigh_shape), 0):
             neighs = tf.expand_dims(neighs, 0)
             neigh_shape = tf.shape(neighs)
 
-        # TODO: return a list of all possible paths from here
         for idx in tf.range(neigh_shape[0]):
             neigh_id = neighs[idx]
             if tf.logical_and(
                 tf.reduce_any(tf.equal(neigh_id, visit_only_once_id)),
                 tf.reduce_any(tf.equal(neigh_id, current_path)),
             ):
-                tf.print("Skipping ", neigh_id, " visit again")
                 continue
-            # Remove node_id from neigh neighborhood in A if it's
-            # a lowercase node
-            """
-            if tf.reduce_any(tf.equal(node_id, visit_only_once_id)):
-                n = tf.shape(A, tf.int64)[0]
-                # rows
-                indices = tf.stack(
-                    [
-                        tf.repeat(node_id, n),
-                        tf.range(n),
-                    ],
-                    axis=1,
-                )
-                updates = tf.repeat(tf.cast(0, tf.int64), n)
-
-                A = tf.tensor_scatter_nd_update(A, indices, updates)
-
-                # cols
-                indices = tf.stack(
-                    [
-                        tf.range(n),
-                        tf.repeat(node_id, n),
-                    ],
-                    axis=1,
-                )
-
-                A = tf.tensor_scatter_nd_update(A, indices, updates)
-                tf.print("cant visit ", node_id, " anymore")
-            else:
-                tf.print("CAN visit ", node_id, " again")
-                # B = tf.identity(A)
-            """
-
-            path = _visit(A, neigh_id, current_path)
-
-            if tf.equal(path[-1], end_id):
-                tf.print("FOUND!", path)
-                stack.append(path)
+            _visit(A, neigh_id, current_path)
         return current_path
 
     # All the paths starts from start
@@ -171,8 +123,7 @@ def main():
         neigh_id = neighs[idx]
         _visit(A, neigh_id, [start_id])
 
-    print(stack, len(stack))
-    sys.exit()
+    tf.print("Part one: ", count)
 
 
 if __name__ == "__main__":
