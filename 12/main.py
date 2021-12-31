@@ -87,6 +87,7 @@ def main():
 
     # Note: the problem asks us to COUNT the number of possible paths
     count = tf.Variable(0, dtype=tf.int64)
+    paths = []
 
     @tf.function
     def _neigh_ids(A, node_id):
@@ -95,6 +96,7 @@ def main():
     def _visit(A: tf.Tensor, node_id: tf.Tensor, path: tf.Tensor):
         current_path = tf.concat([path, [node_id]], axis=0)
         if tf.equal(node_id, end_id):
+            paths.append(current_path)
             count.assign_add(1)
             return current_path
 
@@ -124,6 +126,71 @@ def main():
         _visit(A, neigh_id, [start_id])
 
     tf.print("Part one: ", count)
+
+    # for path in paths:
+    #    tf.print(id_to_human.lookup(path), summarize=-1)
+
+    count.assign(0)
+    inner_count = tf.Variable(0)
+
+    def _visit2(A: tf.Tensor, node_id: tf.Tensor, path: tf.Tensor):
+        current_path = tf.concat([path, [node_id]], axis=0)
+
+        # Skip start
+        if tf.equal(node_id, start_id):
+            return current_path
+
+        # Success on end node
+        if tf.equal(node_id, end_id):
+            # paths.append(current_path)
+            count.assign_add(1)
+            return current_path
+
+        # More than 2 lowercase visited twice
+        visited, visited_idx, visited_count = tf.unique_with_counts(current_path)
+        visited = tf.gather_nd(visited, tf.where(tf.greater(visited_count, 1)))
+        inner_count.assign(0)
+        for idx in tf.range(tf.shape(visited)[0]):
+            if tf.reduce_any(tf.equal(visited[idx], visit_only_once_id)):
+                inner_count.assign_add(1)
+
+            if tf.greater_equal(inner_count, 2):
+                return current_path
+
+        neighs = _neigh_ids(A, node_id)
+        neigh_shape = tf.shape(neighs)
+        if tf.equal(tf.size(neighs), 0):
+            return current_path
+
+        if tf.equal(tf.size(neigh_shape), 0):
+            neighs = tf.expand_dims(neighs, 0)
+            neigh_shape = tf.shape(neighs)
+
+        for idx in tf.range(neigh_shape[0]):
+            neigh_id = neighs[idx]
+
+            # already visited twice and is lowcase
+            if tf.logical_and(
+                tf.reduce_any(tf.equal(neigh_id, visit_only_once_id)),
+                tf.greater(
+                    tf.reduce_sum(tf.cast(tf.equal(neigh_id, current_path), tf.int32)),
+                    1,
+                ),
+            ):
+                continue
+
+            _visit2(A, neigh_id, current_path)
+
+        return current_path
+
+    neighs = _neigh_ids(A, start_id)
+    for idx in tf.range(tf.shape(neighs)[0]):
+        neigh_id = neighs[idx]
+        _visit2(A, neigh_id, [start_id])
+
+    # for path in paths:
+    #    tf.print(id_to_human.lookup(path), summarize=-1)
+    tf.print("Part two: ", count)
 
 
 if __name__ == "__main__":
