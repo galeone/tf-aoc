@@ -16,7 +16,6 @@ class Finder(tf.Module):
         super().__init__()
 
         self._count = tf.Variable(0)
-        self._pos = tf.Variable(0)
         self._dataset = dataset
         self._image = tf.convert_to_tensor(list(self._dataset))
         self._shape = tf.shape(self._image)
@@ -68,8 +67,7 @@ class Finder(tf.Module):
     @tf.function
     def low_points(self) -> Tuple[tf.Tensor, tf.Tensor]:
         self._count.assign(0)
-        self._pos.assign(0)
-        ta = tf.TensorArray(tf.int32, size=1, dynamic_size=True)
+        ta = tf.TensorArray(tf.int32, size=0, dynamic_size=True)
 
         for y in tf.range(self._padded_shape[0] - 1):
             for x in tf.range(self._padded_shape[1] - 1):
@@ -87,8 +85,7 @@ class Finder(tf.Module):
                 ):
                     self._count.assign_add(1 + self._padded_image[y, x])
 
-                    ta = ta.write(self._pos, center)
-                    self._pos.assign_add(1)
+                    ta = ta.write(ta.size(), center)
 
         return ta.stack(), self._count
 
