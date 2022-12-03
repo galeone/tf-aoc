@@ -1,3 +1,11 @@
+"""
+Solution in pure TensorFlow to the puzzle
+
+https://adventofcode.com/2022/day/1
+
+of the Advent of Code 2022.
+"""
+
 import sys
 from pathlib import Path
 
@@ -5,6 +13,8 @@ import tensorflow as tf
 
 
 def main(input_path: Path) -> int:
+    """entrypoint"""
+
     dataset = tf.data.TextLineDataset(input_path.as_posix())
     dataset = dataset.concatenate(tf.data.Dataset.from_tensors([""]))
     initial_state = tf.Variable(0, dtype=tf.int64)

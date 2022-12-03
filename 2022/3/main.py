@@ -1,3 +1,11 @@
+"""
+Solution in pure TensorFlow to the puzzle
+
+https://adventofcode.com/2022/day/3
+
+of the Advent of Code 2022.
+"""
+
 import string
 import sys
 from pathlib import Path
@@ -6,6 +14,8 @@ import tensorflow as tf
 
 
 def main(input_path: Path) -> int:
+    """entrypoint"""
+
     dataset = tf.data.TextLineDataset(input_path.as_posix())
 
     keys_tensor = tf.concat(
@@ -13,9 +23,9 @@ def main(input_path: Path) -> int:
             tf.strings.bytes_split(string.ascii_lowercase),
             tf.strings.bytes_split(string.ascii_uppercase),
         ],
-        axis=0,
+        0,
     )
-    vals_tensor = tf.concat([tf.range(1, 27), tf.range(27, 53)], axis=0)
+    vals_tensor = tf.concat([tf.range(1, 27), tf.range(27, 53)], 0)
 
     item_priority_lut = tf.lookup.StaticHashTable(
         tf.lookup.KeyValueTensorInitializer(keys_tensor, vals_tensor), default_value=-1
@@ -42,8 +52,8 @@ def main(input_path: Path) -> int:
 
     @tf.function
     def to_common(first, second):
-        first = tf.expand_dims(first, axis=0)
-        second = tf.expand_dims(second, axis=0)
+        first = tf.expand_dims(first, 0)
+        second = tf.expand_dims(second, 0)
         intersection = tf.sets.intersection(first, second)
         return tf.squeeze(tf.sparse.to_dense(intersection))
 
@@ -58,9 +68,12 @@ def main(input_path: Path) -> int:
 
     @tf.function
     def to_common_in_batch(batch):
-        a, b, c = batch[0], batch[1], batch[2]
-        aIb = tf.sets.intersection(tf.expand_dims(a, axis=0), tf.expand_dims(b, axis=0))
-        intersection = tf.sets.intersection(aIb, tf.expand_dims(c, axis=0))
+        intersection = tf.sets.intersection(
+            tf.sets.intersection(
+                tf.expand_dims(batch[0], 0), tf.expand_dims(batch[1], 0)
+            ),
+            tf.expand_dims(batch[2], 0),
+        )
         return tf.squeeze(tf.sparse.to_dense(intersection))
 
     grouped_common_elements = grouped_priority_dataset.map(to_common_in_batch)
