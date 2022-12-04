@@ -17,7 +17,7 @@ def main(input_path: Path) -> int:
 
     dataset = tf.data.TextLineDataset(input_path.as_posix())
     dataset = dataset.concatenate(tf.data.Dataset.from_tensors([""]))
-    initial_state = tf.Variable(0, dtype=tf.int64)
+    initial_state = tf.constant(0, dtype=tf.int64)
 
     @tf.function
     def scan_func(state, line):
