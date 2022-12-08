@@ -1,7 +1,7 @@
 """
 Solution in pure TensorFlow to the puzzle
 
-https://adventofcode.com/2022/day/1
+https://adventofcode.com/2022/day/8
 
 of the Advent of Code 2022.
 """
