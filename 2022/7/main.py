@@ -137,11 +137,22 @@ def main(input_path: Path) -> int:
                 # tf.print("new: ", new)
                 lut.insert(keys, [new])
 
-    patsh, sizes = lut.export()
+    paths, sizes = lut.export()
+    print(paths, sizes)
     tf.print(
         "part 1: ",
         tf.reduce_sum(tf.gather(sizes, tf.where(tf.math.less_equal(sizes, 100000)))),
     )
+
+    update_size = 30000000
+    free_space = 70000000 - lut.lookup("/")
+    required_space = update_size - free_space
+    tf.print(required_space)
+
+    big_enough = tf.gather(
+        sizes, tf.where(tf.math.greater_equal(sizes - required_space, 0))
+    )
+    tf.print("part 2: ", tf.gather(big_enough, tf.math.argmin(big_enough, axis=0)))
     return 0
 
 
