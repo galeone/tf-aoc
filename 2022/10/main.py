@@ -63,10 +63,10 @@ def main(input_path: Path) -> int:
     )
     # now every element in the dataset is a clock cycle
 
-    prevX = tf.Variable(X)
+    prev_x = tf.Variable(X)
 
     def clock(op, val):
-        prevX.assign(X)
+        prev_x.assign(X)
         if tf.equal(op, noop_id):
             pass
         else:  # addx
@@ -75,17 +75,62 @@ def main(input_path: Path) -> int:
         cycle.assign_add(1)
 
         if tf.reduce_any([tf.equal(cycle, value) for value in range(20, 221, 40)]):
-            return [cycle, prevX, prevX * cycle]
-        return [cycle, prevX, -1]
+            return [cycle, prev_x, prev_x * cycle]
+        return [cycle, prev_x, -1]
 
-    dataset = dataset.map(clock).filter(
+    strenghts_dataset = dataset.map(clock).filter(
         lambda c, x, strenght: tf.not_equal(strenght, -1)
     )
 
-    strenghts = tf.convert_to_tensor((list(dataset.as_numpy_iterator())))
+    strenghts = tf.convert_to_tensor((list(strenghts_dataset.as_numpy_iterator())))
 
     sumsix = tf.reduce_sum(strenghts[:, -1])
     tf.print("Sum of six signal strenght: ", sumsix)
+
+    crt = tf.Variable(tf.zeros((6, 40, 1), tf.string))
+
+    # Reset status
+    cycle.assign(0)
+    X.assign(1)
+
+    row = tf.Variable(0, dtype=tf.int32)
+
+    def clock2(op, val):
+        prev_x.assign(X)
+        if tf.equal(op, noop_id):
+            pass
+        else:  # addx
+            X.assign_add(val)
+
+        modcycle = tf.math.mod(cycle, 40)
+        if tf.reduce_any(
+            [
+                tf.equal(modcycle, prev_x),
+                tf.equal(modcycle, prev_x - 1),
+                tf.equal(modcycle, prev_x + 1),
+            ]
+        ):
+            crt.assign(
+                tf.tensor_scatter_nd_update(
+                    crt, [[row, tf.math.mod(cycle, 40)]], [["#"]]
+                )
+            )
+        else:
+            crt.assign(
+                tf.tensor_scatter_nd_update(
+                    crt, [[row, tf.math.mod(cycle, 40)]], [["."]]
+                )
+            )
+
+        cycle.assign_add(1)
+
+        if tf.equal(tf.math.mod(cycle, 40), 0):
+            row.assign_add(1)
+        return ""
+
+    list(dataset.map(clock2).as_numpy_iterator())
+
+    tf.print(tf.squeeze(crt), summarize=-1)
 
     return 0
 
