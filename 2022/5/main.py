@@ -34,43 +34,60 @@ def main(input_path: Path) -> int:
     ).map(to_array)
 
     stacks_tensor = tf.convert_to_tensor(list(stacks_dataset))
-
-    tf.print(stacks_tensor)
-
-    num_stacks = tf.shape(stacks_tensor, tf.int64)[0]
-
-    stacks = tf.Variable(
-        stacks_tensor, validate_shape=False, dtype=tf.string, shape=tf.TensorShape(None)
-    )
-    tf.print(stacks)
-
-    shape = tf.shape(stacks)
-    # stack = stacks.assign(tf.transpose(stacks, (1, 0)))
-    stack = stacks.assign(
-        tf.reshape(
-            stacks,
-            [
-                shape[0],
-                shape[1],
-                1,
-            ],
-        )
-    )
+    num_stacks = tf.shape(stacks_tensor, tf.int64)[1] + 1
 
     moves_dataset = dataset.skip(tf.shape(stacks_tensor, tf.int64)[0] + 2)
 
-    tops = tf.lookup.experimental.MutableHashTable(tf.int64, tf.int64, default_value=-1)
+    # stacks = tf.Variable(
+    #    stacks_tensor, validate_shape=False, dtype=tf.string, shape=tf.TensorShape(None)
+    # )
 
-    def update_tops():
-        tops.insert(
-            tf.range(num_stacks),
+    max_stack_size = 200
+    stacks = tf.Variable(tf.zeros((max_stack_size, num_stacks - 1, 1), dtype=tf.string))
+
+    def initialize_stacks():
+        tf.print(stacks_tensor, summarize=-1)
+        tf.print(tf.shape(stacks_tensor))
+
+        # shape = tf.shape(stacks)
+        # stacks.assign(
+        #    tf.reshape(
+        #        stacks,
+        #        [
+        #            shape[0],
+        #            shape[1],
+        #            1,
+        #        ],
+        #    )
+        # )
+
+        indices_x, indices_y = tf.meshgrid(
+            tf.range(max_stack_size - tf.shape(stacks_tensor)[0], max_stack_size),
+            tf.range(tf.shape(stacks_tensor)[1]),
+        )
+
+        indices = tf.stack([indices_x, indices_y], axis=-1)
+
+        updates = tf.expand_dims(tf.transpose(stacks_tensor), axis=2)
+        stacks.assign(tf.tensor_scatter_nd_update(stacks, indices, updates))
+
+    initialize_stacks()
+
+    num_elements = tf.lookup.experimental.MutableHashTable(
+        tf.int64, tf.int64, default_value=-1
+    )
+
+    def update_num_elements():
+        num_elements.insert(
+            tf.range(num_stacks - 1),
             tf.squeeze(
                 tf.reduce_sum(tf.cast(tf.not_equal(stacks, ""), tf.int64), axis=[0])
             ),
         )
 
-    update_tops()
-    tf.print("tops: ", tops.export())
+    update_num_elements()
+
+    one_at_a_time = tf.Variable(True)
 
     # move 1 from 2 to 1
     def move(line):
@@ -97,31 +114,77 @@ def main(input_path: Path) -> int:
         )
 
         tf.print(line)
-        tf.print("s: ", source, " d: ", dest)
-        read = stacks[:amount, source]
-        tf.print("read: ", read)
+        num_element_source = num_elements.lookup([source])[0]
+        top = max_stack_size - num_element_source
+        # tf.print("amount: ", amount, " source: ", source, " top: ", top)
+
+        read = stacks[top : top + amount, source]
 
         # remove from source
-        # TODO
+        # tf.print("removing from source stacks[:amount, source]: ", read)
+        indices_x, indices_y = tf.meshgrid(tf.range(top, top + amount), [source])
+        indices = tf.reshape(tf.stack([indices_x, indices_y], axis=-1), (-1, 2))
+        updates = tf.reshape(tf.repeat("", amount), (-1, 1))
 
-        top = tops[dest]
-        tf.print("top in dest: ", top)
-        # insert in dest
-        # TODO
+        stacks.assign(
+            tf.tensor_scatter_nd_update(stacks, indices, updates), use_locking=True
+        )
 
-        # stacks.assign(
-        #    tf.tensor_scatter_nd_update(
-        #        stacks, [tf.range(top, top + amount)], tf.reshape(read, -1)
-        #    )
-        # )
-        tf.print(stacks)
+        num_element_dest = num_elements.lookup([dest])[0]
+        # tf.print("num_element in dest: ", num_element_dest)
+        # tf.print(stacks[num_element_dest, :])
 
-        # stacks[dest].write(stacks[dest].size(), stacks[source].
+        top = max_stack_size - num_element_dest - 1
+        # tf.print("top: ", top)
 
-        return line
+        # one a at a time -> reverse
+        if one_at_a_time:
+            insert = tf.reverse(read, axis=[0])
+            insert = tf.reshape(insert, (-1, 1))
+        else:
+            insert = tf.reshape(read, (-1, 1))
 
-    moves_dataset = moves_dataset.map(move)
-    tf.print(next(moves_dataset.take(1).as_numpy_iterator()))
+        tf.print("inserting in dest: ", insert)
+        tf.print("inserting at pos: ", top - amount + 1, " - ", top + 1)
+
+        indices_x, indices_y = tf.meshgrid(tf.range(top - amount + 1, top + 1), [dest])
+        indices = tf.reshape(tf.stack([indices_x, indices_y], axis=-1), (-1, 2))
+
+        stacks.assign(
+            tf.tensor_scatter_nd_update(stacks, indices, insert), use_locking=True
+        )
+
+        update_num_elements()
+        # tf.print(tf.squeeze(stacks), summarize=-1)
+        return stacks
+
+    """
+    tf.print("part 1")
+    play = moves_dataset.map(move)
+
+    list(play)
+
+    indices_x = tf.range(num_stacks - 1)
+    indices_y = max_stack_size - tf.reverse(num_elements.export()[1], axis=[0])
+
+    indices = tf.reshape(tf.stack([indices_y, indices_x], axis=-1), (-1, 2))
+
+    tf.print(tf.strings.join(tf.squeeze(tf.gather_nd(stacks, indices)), ""))
+    """
+
+    tf.print("part 2")
+    initialize_stacks()
+    update_num_elements()
+    one_at_a_time.assign(False)
+    play = moves_dataset.map(move)
+    list(play)
+
+    indices_x = tf.range(num_stacks - 1)
+    indices_y = max_stack_size - tf.reverse(num_elements.export()[1], axis=[0])
+
+    indices = tf.reshape(tf.stack([indices_y, indices_x], axis=-1), (-1, 2))
+
+    tf.print(tf.strings.join(tf.squeeze(tf.gather_nd(stacks, indices)), ""))
 
     return 0
 
