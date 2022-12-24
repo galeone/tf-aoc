@@ -58,19 +58,20 @@ def main(input_path: Path) -> int:
     monkey_count = tf.Variable(0)
     for monkey_ready in dataset:
         if monkey_ready:
-            tf.print(monkey)
+            # tf.print(monkey)
             monkey.assign(tf.zeros_like(monkey))
             monkey_count.assign_add(1)
 
-    inspected_count = tf.Variable(tf.zeros((monkey_count), tf.int32))
+    inspected_count = tf.Variable(tf.zeros((monkey_count), tf.int64))
+    part = tf.Variable(1)
 
     @tf.function
     def apply_operation(worry_level, op):
         op = tf.strings.split([op], " ")[0]  # lhs, op, rhs
-        ret = 0
+        ret = tf.constant(0, tf.int64)
         # lhs always = "old"
         if tf.strings.regex_full_match(op[2], r"^\d*$"):
-            val = tf.strings.to_number(op[2], tf.int32)
+            val = tf.strings.to_number(op[2], tf.int64)
         else:
             val = worry_level
         if tf.equal(op[1], "+"):
@@ -82,9 +83,9 @@ def main(input_path: Path) -> int:
 
     @tf.function
     def monkey_play(rounds):
-        items = tf.TensorArray(tf.int32, size=1, dynamic_size=True)
+        items = tf.TensorArray(tf.int64, size=1, dynamic_size=True)
         operation = tf.TensorArray(tf.string, size=1, dynamic_size=True)
-        divisible_test = tf.TensorArray(tf.int32, size=1, dynamic_size=True)
+        divisible_test = tf.TensorArray(tf.int64, size=1, dynamic_size=True)
         throw_if_true = tf.TensorArray(tf.int32, size=1, dynamic_size=True)
         throw_if_false = tf.TensorArray(tf.int32, size=1, dynamic_size=True)
 
@@ -93,11 +94,11 @@ def main(input_path: Path) -> int:
                 idx = tf.strings.to_number(monkey[0], tf.int32)
                 items = items.write(
                     idx,
-                    tf.strings.to_number(tf.strings.split(monkey[1], ","), tf.int32),
+                    tf.strings.to_number(tf.strings.split(monkey[1], ","), tf.int64),
                 )
                 operation = operation.write(idx, monkey[2])
                 divisible_test = divisible_test.write(
-                    idx, tf.strings.to_number(monkey[3], tf.int32)
+                    idx, tf.strings.to_number(monkey[3], tf.int64)
                 )
                 throw_if_true = throw_if_true.write(
                     idx, tf.strings.to_number(monkey[4], tf.int32)
@@ -105,6 +106,11 @@ def main(input_path: Path) -> int:
                 throw_if_false = throw_if_false.write(
                     idx, tf.strings.to_number(monkey[5], tf.int32)
                 )
+
+        if tf.equal(part, 1):
+            divisor = tf.constant(3, tf.int64)
+        else:
+            divisor = tf.reduce_prod(divisible_test.stack())
 
         for r in tf.range(rounds):
             # Now items contains all the starting items for every monkey
@@ -114,30 +120,33 @@ def main(input_path: Path) -> int:
                 op = operation.read(m)
                 test = divisible_test.read(m)
 
-                tf.print("Monkey ", m, ":")
+                # tf.print("Monkey ", m, ":")
                 for i in tf.range(tf.shape(m_items)[0]):
-                    tf.print(
-                        " Monkey inspects an item with a worry level of ", m_items[i]
-                    )
+                    # tf.print(
+                    #    " Monkey inspects an item with a worry level of ", m_items[i]
+                    # )
                     worry_level = apply_operation(m_items[i], op)
-                    tf.print(
-                        "  Worry level is processed accoring to: ",
-                        op,
-                        " becoming: ",
-                        worry_level,
-                    )
-                    worry_level //= 3
-                    tf.print(
-                        "  Monkey gets bored with item. Worry level is divided by 3 to ",
-                        worry_level,
-                    )
+                    # tf.print(
+                    #    "  Worry level is processed accoring to: ",
+                    #    op,
+                    #    " becoming: ",
+                    #    worry_level,
+                    # )
+                    if tf.equal(part, 1):
+                        worry_level //= divisor
+                        # tf.print(
+                        #    "  Monkey gets bored with item. Worry level is divided by 3 to ",
+                        #    worry_level,
+                        # )
+                    else:
+                        worry_level = tf.math.mod(worry_level, divisor)
 
                     if tf.equal(tf.math.mod(worry_level, test), 0):
                         dest = throw_if_true.read(m)
                     else:
                         dest = throw_if_false.read(m)
 
-                    tf.print("dest items before: ", items.read(dest))
+                    # tf.print("dest items before: ", items.read(dest))
 
                     items = items.write(
                         dest,
@@ -146,22 +155,30 @@ def main(input_path: Path) -> int:
                             axis=0,
                         ),
                     )
-                    tf.print("dest items: ", items.read(dest))
+                    # tf.print("dest items: ", items.read(dest))
 
-                    update = tf.tensor_scatter_nd_add(inspected_count, [[m]], [1])
+                    update = tf.tensor_scatter_nd_add(
+                        inspected_count,
+                        [[tf.cast(m, tf.int64)]],
+                        [tf.constant(1, tf.int64)],
+                    )
                     inspected_count.assign(update)
 
                 items = items.write(m, [])
 
-        tf.print("after: ", items.concat(), summarize=-1)
+        # tf.print("after: ", items.concat(), summarize=-1)
 
     monkey_play(20)
-
     top_values, _ = tf.math.top_k(inspected_count, k=2)
-
     monkey_business = tf.reduce_prod(top_values)
-
     tf.print("Part 1: ", monkey_business)
+
+    inspected_count.assign(tf.zeros_like(inspected_count))
+    part.assign(2)
+    monkey_play(10000)
+    top_values, _ = tf.math.top_k(inspected_count, k=2)
+    monkey_business = tf.reduce_prod(top_values)
+    tf.print("Part 2: ", monkey_business)
 
     return 0
 
