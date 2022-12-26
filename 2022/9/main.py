@@ -72,18 +72,6 @@ def main(input_path: Path) -> int:
                         [mapped],
                         [tf.stack([tf.constant(1, tf.int64), tail[0], tail[1]])],
                     )
-                elif tf.reduce_all(
-                    [
-                        tf.equal(visited, 1),
-                        tf.equal(first_coord, tail[1]),
-                        tf.equal(second_coord, tail[0]),
-                    ]
-                ):
-                    # mapped to the same number, but different cords (e.g [3, 2] and [2, 3] both mapped to 6)
-                    pos.insert(
-                        [mapped],
-                        [tf.stack([tf.constant(2, tf.int64), tail[0], tail[1]])],
-                    )
 
             tf.print("H: ", head)
             tf.print("T: ", tail)
