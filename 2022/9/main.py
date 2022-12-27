@@ -38,59 +38,74 @@ def main(input_path: Path) -> int:
         .map(lambda line: tf.strings.split(line, " "))
         .map(lambda pair: (pair[0], tf.strings.to_number(pair[1], tf.int64)))
     )
-    head = tf.Variable(tf.zeros((2,), dtype=tf.int64))
-    tail = tf.Variable(tf.zeros_like(head))
     pos = tf.lookup.experimental.MutableHashTable(tf.int64, tf.int64, (-1, 0, 0))
+
+    def get_play(nodes):
+        rope = tf.Variable(tf.zeros((nodes, 2), tf.int64))
+
+        def play(direction, amount):
+
+            sign = tf.constant(-1, tf.int64)
+            if tf.logical_or(tf.equal(direction, "U"), tf.equal(direction, "R")):
+                sign = tf.constant(1, tf.int64)
+
+            axis = tf.constant((0, 1), tf.int64)
+            if tf.logical_or(tf.equal(direction, "R"), tf.equal(direction, "L")):
+                axis = tf.constant((1, 0), tf.int64)
+
+            for _ in tf.range(amount):
+                rope.assign(tf.tensor_scatter_nd_add(rope, [[0]], [sign * axis]))
+                for i in tf.range(1, nodes):
+                    if tf.logical_not(are_neigh(rope[i - 1], rope[i])):
+                        distance = rope[i - 1] - rope[i]
+
+                        rope.assign(
+                            tf.tensor_scatter_nd_add(
+                                rope, [[i]], [tf.math.sign(distance)]
+                            )
+                        )
+
+                        if tf.equal(i, nodes - 1):
+                            mapped = pairing_fn(rope[i][0], rope[i][1])
+                            info = pos.lookup([mapped])[0]
+                            visited, first_coord, second_coord = (
+                                info[0],
+                                info[1],
+                                info[2],
+                            )
+                            if tf.equal(visited, -1):
+                                # first time visited
+                                pos.insert(
+                                    [mapped],
+                                    [
+                                        tf.stack(
+                                            [
+                                                tf.constant(1, tf.int64),
+                                                rope[i][0],
+                                                rope[i][1],
+                                            ]
+                                        )
+                                    ],
+                                )
+
+            return 0
+
+        return play
+
+    tf.print("Part 1: ")
     pos.insert([pairing_fn(0, 0)], [(1, 0, 0)])
-
-    def play(direction, amount):
-
-        sign = tf.constant(-1, tf.int64)
-        if tf.logical_or(tf.equal(direction, "U"), tf.equal(direction, "R")):
-            sign = tf.constant(1, tf.int64)
-
-        axis = tf.constant((0, 1), tf.int64)
-        if tf.logical_or(tf.equal(direction, "R"), tf.equal(direction, "L")):
-            axis = tf.constant((1, 0), tf.int64)
-
-        for _ in tf.range(amount):
-            head.assign_add(sign * axis)
-            if tf.logical_not(are_neigh(head, tail)):
-                distance = head - tail
-                x = tf.math.sign(distance[0])
-                y = tf.math.sign(distance[1])
-
-                tail.assign_add(tf.stack([x, y]))
-
-                mapped = pairing_fn(tail[0], tail[1])
-                info = pos.lookup([mapped])[0]
-
-                visited, first_coord, second_coord = info[0], info[1], info[2]
-                if tf.equal(visited, -1):
-                    # first time visited
-                    pos.insert(
-                        [mapped],
-                        [tf.stack([tf.constant(1, tf.int64), tail[0], tail[1]])],
-                    )
-
-            tf.print("H: ", head)
-            tf.print("T: ", tail)
-
-        return head
-
-    # less than 5888
-
-    dataset = dataset.map(play)
-
-    list(dataset)
-
-    # (#visisted, x, y), where # visisted = 1 visited x,y # visisted = 2 visisted x,y and y,x
+    list(dataset.map(get_play(2)))
     tail_positions = pos.export()[1]
-    # tf.print(tf.shape(tail_positions))
     visited_count = tf.reduce_sum(tail_positions[:, 0])
+    tf.print(visited_count)
 
-    # tf.print(pos.export()[1], summarize=-1)
-    tf.print("part 1: ", visited_count)
+    tf.print("Part 2: ")
+    pos.remove(pos.export()[0])
+    pos.insert([pairing_fn(0, 0)], [(1, 0, 0)])
+    list(dataset.map(get_play(10)))
+    tail_positions = pos.export()[1]
+    visited_count = tf.reduce_sum(tail_positions[:, 0])
+    tf.print(visited_count)
 
     return 0
 
