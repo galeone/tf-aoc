@@ -23,7 +23,7 @@ def main(input_path: Path) -> int:
         [tf.strings.bytes_split(string.ascii_lowercase), tf.constant(["S", "E"])],
         axis=0,
     )
-    values_tensor = tf.concat([tf.range(0, 26), tf.constant([-1, 25])], axis=0)
+    values_tensor = tf.concat([tf.range(0, 26), tf.constant([-1, 26])], axis=0)
     lut = tf.lookup.StaticHashTable(
         tf.lookup.KeyValueTensorInitializer(keys_tensor, values_tensor),
         default_value=-1,
@@ -33,9 +33,6 @@ def main(input_path: Path) -> int:
 
     grid = tf.convert_to_tensor(list(dataset))
     visited = tf.Variable(tf.zeros_like(grid))
-
-    ends = tf.cast(tf.where(tf.equal(grid, 25)), tf.int32)
-    start = tf.cast(tf.where(tf.equal(grid, -1))[0], tf.int32)
 
     @tf.function
     def _neighs(grid: tf.Tensor, center: tf.Tensor):
@@ -71,23 +68,40 @@ def main(input_path: Path) -> int:
         tf.int32,
         (3,),  # x,y,distance
     )
-    queue.enqueue(tf.concat([start, tf.constant([0])], axis=0))
 
-    def bfs():
+    ends = tf.cast(tf.where(tf.greater_equal(grid, 25)), tf.int32)
+    start = tf.cast(tf.where(tf.equal(grid, -1))[0], tf.int32)
+
+    def bfs(part2=tf.constant(False)):
+        if tf.logical_not(part2):
+            queue.enqueue(tf.concat([start, tf.constant([0])], axis=0))
+            dest_val = 25
+
+            def condition(n_vals, me_val):
+                return tf.where(tf.less_equal(n_vals, me_val + 1))
+
+        else:
+            end = tf.cast(tf.where(tf.equal(grid, 26)), tf.int32)[0]
+            queue.enqueue(tf.concat([end, tf.constant([0])], axis=0))
+            dest_val = 1
+
+            def condition(n_vals, me_val):
+                return tf.where(tf.greater_equal(n_vals, me_val - 1))
+
         while tf.greater(queue.size(), 0):
             v = queue.dequeue()
             me, distance = v[:2], v[2]
             me_val = tf.gather_nd(grid, [me])
             already_visited = tf.squeeze(tf.cast(tf.gather_nd(visited, [me]), tf.bool))
             if tf.logical_not(already_visited):
-                if tf.reduce_all(tf.equal(me_val, 25)):
-                    return distance
+                if tf.reduce_all(tf.equal(me_val, dest_val)):
+                    return distance - 1
                 visited.assign(tf.tensor_scatter_nd_add(visited, [me], [1]))
 
                 n_vals, n_coords = _neighs(grid, me)
                 potential_dests = tf.gather_nd(
                     n_coords,
-                    tf.where(tf.less_equal(n_vals, me_val + 1)),
+                    condition(n_vals, me_val),
                 )
 
                 not_visited = tf.equal(tf.gather_nd(visited, potential_dests), 0)
@@ -108,6 +122,10 @@ def main(input_path: Path) -> int:
         return -1
 
     tf.print("Steps: ", bfs())
+    queue.dequeue_many(queue.size())
+    visited.assign(tf.zeros_like(visited))
+
+    tf.print("Part 2: ", bfs(True))
     return 0
 
 
