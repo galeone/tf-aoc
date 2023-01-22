@@ -7,7 +7,8 @@ from tensorflow.keras.layers import Conv2D
 
 def main(input_path: Path):
     # N is the size of the board for simulation and L is number of knots in the rope
-    N, L = 512, 10
+    # Change 2 to 10 for solving part 2
+    N, L = 512, 2
     # Common setting of the layers.
     common_kw = dict(padding="same", kernel_initializer=tf.keras.initializers.Zeros())
     # Define the architecture of the model. Will fill the weight later.
